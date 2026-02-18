@@ -1,16 +1,14 @@
-FROM ubuntu:22.04
+FROM node:18-alpine
 
-RUN apt update && \
-    apt install -y gcc nodejs npm && \
-    mkdir /app
+RUN apk add --no-cache gcc musl-dev
 
 WORKDIR /app
 
-COPY package.json .
+COPY package*.json ./
 RUN npm install
 
 COPY . .
 
-EXPOSE 3000
+EXPOSE 80
 
 CMD ["npm", "start"]

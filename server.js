@@ -1,68 +1,77 @@
-const express = require("express");
-const fs = require("fs");
-const { exec } = require("child_process");
-const path = require("path");
+const express = require('express');
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 80;
+/* ==============================
+   Health Check Route
+============================== */
+app.get('/', (req, res) => {
+    res.send("🚀 Compiler API is running successfully!");
+});
 
-/* ================================
-   Compile and Run C Code
-=================================*/
-app.post("/run", (req, res) => {
+/* ==============================
+   Compile & Run C Code
+============================== */
+app.post('/run', (req, res) => {
 
-    const { code } = req.body;
+    const code = req.body.code;
 
     if (!code) {
-        return res.status(400).json({ error: "No code provided" });
+        return res.status(400).json({
+            success: false,
+            error: "No code provided"
+        });
     }
 
-    const uniqueId = Date.now();
-    const workDir = path.join(__dirname, "workspace_" + uniqueId);
+    // Create temporary folder
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compiler-'));
 
-    fs.mkdirSync(workDir);
+    const filePath = path.join(tempDir, 'code.c');
+    const outputPath = path.join(tempDir, 'output');
 
-    const codeFile = path.join(workDir, "code.c");
-    fs.writeFileSync(codeFile, code);
+    fs.writeFileSync(filePath, code);
 
-    const compileCommand = `
-        gcc ${codeFile} -o ${workDir}/output &&
-        timeout 5s ${workDir}/output
-    `;
+    const compileCommand = `gcc ${filePath} -o ${outputPath}`;
 
-    exec(compileCommand, (error, stdout, stderr) => {
+    exec(compileCommand, (compileError, compileStdErr) => {
 
-        let result;
-
-        if (error) {
-            result = stderr || error.message;
-        } else {
-            result = stdout;
+        if (compileError) {
+            return res.json({
+                success: false,
+                stage: "Compilation Error",
+                error: compileStdErr
+            });
         }
 
-        // Cleanup
-        fs.rmSync(workDir, { recursive: true, force: true });
+        exec(outputPath, { timeout: 5000 }, (runError, stdout, stderr) => {
 
-        res.json({
-            output: result.trim()
+            if (runError) {
+                return res.json({
+                    success: false,
+                    stage: "Runtime Error",
+                    error: stderr || runError.message
+                });
+            }
+
+            return res.json({
+                success: true,
+                output: stdout
+            });
         });
-
     });
-
 });
 
-/* ================================
-   Health Check
-=================================*/
-app.get("/", (req, res) => {
-    res.send("Compiler API Running 🚀");
-});
-
-/* ================================
+/* ==============================
    Start Server
-=================================*/
+============================== */
+
+const PORT = process.env.PORT || 80;
+
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Compiler running on port ${PORT}`);
+    console.log(`✅ Compiler API running on port ${PORT}`);
 });
